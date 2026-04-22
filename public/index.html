@@ -1,0 +1,1190 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bag Tracker Dashboard</title>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin=""
+    />
+    <style>
+      :root {
+        --bg: #f3eee3;
+        --card: rgba(255, 252, 245, 0.88);
+        --text: #1b1f24;
+        --muted: #6e6c67;
+        --safe: #168f4a;
+        --alert: #d53b2f;
+        --unknown: #ae8a26;
+        --accent: #0a7284;
+        --accent-2: #0b5f6d;
+        --line: #e3d9ca;
+        --soft-shadow: 0 10px 30px rgba(28, 34, 40, 0.12);
+        --bg-layer-1: rgba(127, 202, 235, 0.28);
+        --bg-layer-2: rgba(255, 192, 121, 0.28);
+        --bg-layer-3: rgba(125, 196, 174, 0.23);
+        --blob-1: rgba(10, 114, 132, 0.18);
+        --blob-2: rgba(255, 167, 63, 0.2);
+        --hero-grad: linear-gradient(112deg, #0a7082 0%, #1f7a69 35%, #0c6070 70%, #0a7082 100%);
+        --panel-border: rgba(255, 255, 255, 0.5);
+        --map-frame: rgba(255, 255, 255, 0.7);
+        --stat-bg: linear-gradient(180deg, #fff8eb, #f8f2e6);
+        --log-bg: #fcf8f0;
+        --log-valid-bg: linear-gradient(90deg, rgba(31, 157, 85, 0.08), #fcf8f0 28%);
+        --log-invalid-bg: linear-gradient(90deg, rgba(210, 55, 45, 0.08), #fcf8f0 28%);
+        --input-bg: rgba(255, 255, 255, 0.86);
+        --scroll-thumb: #bfaf98;
+        --scroll-track: #f4ece0;
+        --provider-fg: rgba(255, 255, 255, 0.85);
+      }
+
+      [data-theme="dark"] {
+        --bg: #121a22;
+        --card: rgba(19, 27, 37, 0.8);
+        --text: #eaf0f7;
+        --muted: #9ca9bc;
+        --safe: #33c26d;
+        --alert: #ff5d4f;
+        --unknown: #d8ad37;
+        --accent: #2f9ec2;
+        --accent-2: #206f8a;
+        --line: #2a3a4f;
+        --soft-shadow: 0 14px 32px rgba(0, 0, 0, 0.42);
+        --bg-layer-1: rgba(63, 120, 201, 0.32);
+        --bg-layer-2: rgba(208, 96, 52, 0.22);
+        --bg-layer-3: rgba(51, 166, 129, 0.22);
+        --blob-1: rgba(35, 138, 173, 0.22);
+        --blob-2: rgba(196, 102, 64, 0.24);
+        --hero-grad: linear-gradient(112deg, #1b3f66 0%, #18595a 35%, #2b3f61 70%, #1b3f66 100%);
+        --panel-border: rgba(114, 148, 184, 0.22);
+        --map-frame: rgba(122, 151, 183, 0.3);
+        --stat-bg: linear-gradient(180deg, #1a2431, #15202c);
+        --log-bg: #192433;
+        --log-valid-bg: linear-gradient(90deg, rgba(30, 195, 102, 0.16), #192433 28%);
+        --log-invalid-bg: linear-gradient(90deg, rgba(240, 88, 72, 0.16), #192433 28%);
+        --input-bg: rgba(16, 24, 33, 0.9);
+        --scroll-thumb: #546a84;
+        --scroll-track: #1a2636;
+        --provider-fg: rgba(225, 235, 245, 0.9);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: "Nunito Sans", sans-serif;
+        color: var(--text);
+        position: relative;
+        overflow-x: hidden;
+        background:
+          radial-gradient(circle at 15% 10%, var(--bg-layer-1) 0%, transparent 42%),
+          radial-gradient(circle at 90% 88%, var(--bg-layer-2) 0%, transparent 44%),
+          radial-gradient(circle at 80% 20%, var(--bg-layer-3) 0%, transparent 36%),
+          var(--bg);
+      }
+
+      body::before,
+      body::after {
+        content: "";
+        position: fixed;
+        border-radius: 50%;
+        z-index: 0;
+        pointer-events: none;
+        filter: blur(2px);
+      }
+
+      body::before {
+        width: 280px;
+        height: 280px;
+        left: -80px;
+        top: 45vh;
+        background: radial-gradient(circle, var(--blob-1), rgba(10, 114, 132, 0));
+        animation: floatBlob 12s ease-in-out infinite;
+      }
+
+      body::after {
+        width: 320px;
+        height: 320px;
+        right: -110px;
+        top: 14vh;
+        background: radial-gradient(circle, var(--blob-2), rgba(255, 167, 63, 0));
+        animation: floatBlob 16s ease-in-out infinite reverse;
+      }
+
+      .layout {
+        width: min(1100px, 94vw);
+        margin: 0 auto;
+        padding: 24px 0 28px;
+        display: grid;
+        gap: 16px;
+        position: relative;
+        z-index: 1;
+      }
+
+      .panel {
+        background: var(--card);
+        border-radius: 16px;
+        padding: 16px;
+        box-shadow: var(--soft-shadow);
+        border: 1px solid var(--panel-border);
+        backdrop-filter: blur(6px);
+        animation: riseIn 560ms ease both;
+        transition: transform 260ms ease, box-shadow 260ms ease;
+      }
+
+      .panel:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 16px 34px rgba(28, 34, 40, 0.14);
+      }
+
+      .panel:nth-of-type(2) {
+        animation-delay: 70ms;
+      }
+
+      .panel:nth-of-type(3) {
+        animation-delay: 120ms;
+      }
+
+      .panel:nth-of-type(4) {
+        animation-delay: 170ms;
+      }
+
+      .panel:nth-of-type(5) {
+        animation-delay: 220ms;
+      }
+
+      .headline {
+        position: relative;
+        overflow: hidden;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+        background: var(--hero-grad);
+        background-size: 220% 220%;
+        color: #fff;
+        animation: gradientShift 8s ease infinite;
+      }
+
+      .brand-block {
+        display: grid;
+        gap: 10px;
+      }
+
+      .brand-title-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .brand-logo {
+        width: 44px;
+        height: 44px;
+        border-radius: 12px;
+        display: grid;
+        place-items: center;
+        background: rgba(255, 255, 255, 0.18);
+        border: 1px solid rgba(255, 255, 255, 0.35);
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+      }
+
+      .brand-logo svg {
+        width: 24px;
+        height: 24px;
+      }
+
+      .logo-strip {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .logo-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.74rem;
+        padding: 4px 8px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.14);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        color: rgba(255, 255, 255, 0.95);
+        letter-spacing: 0.2px;
+      }
+
+      .logo-chip svg {
+        width: 13px;
+        height: 13px;
+      }
+
+      .header-actions {
+        display: grid;
+        justify-items: end;
+        gap: 8px;
+      }
+
+      .headline::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(120deg, transparent 18%, rgba(255, 255, 255, 0.18) 45%, transparent 70%);
+        transform: translateX(-100%);
+        animation: shimmer 4.4s ease-in-out infinite;
+        pointer-events: none;
+      }
+
+      h1 {
+        margin: 0;
+        font-family: "Sora", sans-serif;
+        font-size: clamp(1.15rem, 2.7vw, 1.75rem);
+        letter-spacing: 0.4px;
+      }
+
+      h3 {
+        margin: 0 0 8px;
+        font-family: "Sora", sans-serif;
+      }
+
+      .hero-note {
+        margin: 6px 0 0;
+        font-size: 0.84rem;
+        opacity: 0.94;
+      }
+
+      .status-pill {
+        padding: 8px 14px;
+        border-radius: 999px;
+        font-weight: 700;
+        letter-spacing: 0.3px;
+        color: #fff;
+        min-width: 98px;
+        text-align: center;
+        box-shadow: 0 8px 18px rgba(0, 0, 0, 0.2);
+        transition: transform 220ms ease;
+      }
+
+      .safe {
+        background: linear-gradient(90deg, #0f7f3f, #1f9d55);
+      }
+
+      .alert {
+        background: linear-gradient(90deg, #b02018, #d2372d);
+        animation: pulseAlert 1.2s ease-in-out infinite;
+      }
+
+      .unknown {
+        background: linear-gradient(90deg, #876e1c, #a3872b);
+      }
+
+      #map {
+        width: 100%;
+        height: min(68vh, 620px);
+        border-radius: 14px;
+        overflow: hidden;
+        border: 1px solid var(--map-frame);
+        box-shadow:
+          inset 0 0 0 1px rgba(0, 0, 0, 0.04),
+          0 20px 26px rgba(36, 35, 33, 0.12);
+      }
+
+      .stats {
+        display: grid;
+        gap: 10px;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      }
+
+      .stat-box {
+        background: var(--stat-bg);
+        border-radius: 12px;
+        padding: 12px;
+        border: 1px solid var(--line);
+        position: relative;
+        overflow: hidden;
+        transition: transform 220ms ease, box-shadow 220ms ease;
+      }
+
+      .stat-box::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 0;
+        height: 3px;
+        background: linear-gradient(90deg, #0a7284, #4a9f87, #e79a2d);
+        opacity: 0.8;
+      }
+
+      .stat-box:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 8px 16px rgba(14, 14, 14, 0.08);
+      }
+
+      .stat-label {
+        font-size: 0.82rem;
+        color: var(--muted);
+      }
+
+      .stat-value {
+        font-size: 1.02rem;
+        font-weight: 600;
+        margin-top: 4px;
+      }
+
+      .log-list {
+        margin: 0;
+        padding-left: 0;
+        list-style: none;
+        max-height: 220px;
+        overflow: auto;
+        scrollbar-width: thin;
+        scrollbar-color: var(--scroll-thumb) var(--scroll-track);
+      }
+
+      .log-list::-webkit-scrollbar {
+        width: 8px;
+      }
+
+      .log-list::-webkit-scrollbar-track {
+        background: var(--scroll-track);
+        border-radius: 10px;
+      }
+
+      .log-list::-webkit-scrollbar-thumb {
+        background: var(--scroll-thumb);
+        border-radius: 10px;
+      }
+
+      .log-list li {
+        font-size: 0.9rem;
+        margin-bottom: 8px;
+        color: var(--text);
+        border: 1px solid var(--line);
+        background: var(--log-bg);
+        border-radius: 10px;
+        padding: 8px 10px;
+        animation: riseIn 360ms ease both;
+      }
+
+      .log-list li.valid-log {
+        border-left: 4px solid #1f9d55;
+        background: var(--log-valid-bg);
+      }
+
+      .log-list li.invalid-log {
+        border-left: 4px solid #d2372d;
+        background: var(--log-invalid-bg);
+      }
+
+      .log-list li.empty-log {
+        color: var(--muted);
+        text-align: center;
+      }
+
+      .hint {
+        color: var(--muted);
+        font-size: 0.85rem;
+      }
+
+      .provider {
+        font-size: 0.82rem;
+        color: var(--provider-fg);
+        font-weight: 600;
+        text-align: right;
+      }
+
+      .ingest-grid {
+        display: grid;
+        gap: 10px;
+      }
+
+      .tools-dropdown {
+        margin-top: 12px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        overflow: hidden;
+        background: var(--log-bg);
+      }
+
+      .tools-dropdown summary {
+        cursor: pointer;
+        list-style: none;
+        padding: 10px 12px;
+        font-weight: 700;
+        font-size: 0.9rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .tools-dropdown summary::-webkit-details-marker {
+        display: none;
+      }
+
+      .tools-dropdown summary::after {
+        content: "▼";
+        font-size: 0.72rem;
+        opacity: 0.8;
+        transition: transform 180ms ease;
+      }
+
+      .tools-dropdown[open] summary::after {
+        transform: rotate(180deg);
+      }
+
+      .tools-body {
+        border-top: 1px solid var(--line);
+        padding: 12px;
+        display: grid;
+        gap: 10px;
+      }
+
+      .sms-input {
+        width: 100%;
+        min-height: 92px;
+        border-radius: 12px;
+        border: 1px solid #d9d1c6;
+        background: var(--input-bg);
+        padding: 12px;
+        font: inherit;
+        color: var(--text);
+        transition: border-color 180ms ease, box-shadow 180ms ease;
+      }
+
+      .theme-toggle {
+        border: 1px solid rgba(255, 255, 255, 0.45);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.12);
+        color: #fff;
+        font: inherit;
+        font-size: 0.8rem;
+        font-weight: 700;
+        letter-spacing: 0.25px;
+        padding: 7px 12px;
+        cursor: pointer;
+        backdrop-filter: blur(4px);
+        transition: transform 180ms ease, background 180ms ease;
+      }
+
+      .theme-toggle:hover {
+        transform: translateY(-1px);
+        background: rgba(255, 255, 255, 0.22);
+      }
+
+      .theme-toggle:focus-visible {
+        outline: 2px solid rgba(255, 255, 255, 0.8);
+        outline-offset: 2px;
+      }
+
+      .sms-input:focus {
+        outline: none;
+        border-color: rgba(10, 114, 132, 0.65);
+        box-shadow: 0 0 0 3px rgba(10, 114, 132, 0.15);
+      }
+
+      .btn {
+        border: 0;
+        border-radius: 12px;
+        background: linear-gradient(110deg, var(--accent), var(--accent-2));
+        color: #fff;
+        padding: 10px 16px;
+        font-weight: 700;
+        letter-spacing: 0.2px;
+        cursor: pointer;
+        width: fit-content;
+        position: relative;
+        overflow: hidden;
+        transition: transform 180ms ease, box-shadow 180ms ease;
+        box-shadow: 0 8px 16px rgba(10, 114, 132, 0.28);
+      }
+
+      .btn::after {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: -120%;
+        width: 120%;
+        height: 100%;
+        background: linear-gradient(120deg, transparent, rgba(255, 255, 255, 0.28), transparent);
+        transition: left 260ms ease;
+      }
+
+      .btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 12px 20px rgba(10, 114, 132, 0.3);
+      }
+
+      .btn:hover::after {
+        left: 120%;
+      }
+
+      .btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+
+      .mini {
+        font-size: 0.82rem;
+        color: var(--muted);
+      }
+
+      .logs-head {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+      }
+
+      .toggle-wrap {
+        font-size: 0.84rem;
+        color: var(--text);
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        user-select: none;
+      }
+
+      .toggle-wrap input {
+        width: 16px;
+        height: 16px;
+        accent-color: var(--accent);
+      }
+
+      .log-summary {
+        margin-top: 4px;
+        margin-bottom: 10px;
+      }
+
+      @keyframes floatBlob {
+        0% {
+          transform: translateY(0px) translateX(0px) scale(1);
+        }
+        50% {
+          transform: translateY(-18px) translateX(12px) scale(1.06);
+        }
+        100% {
+          transform: translateY(0px) translateX(0px) scale(1);
+        }
+      }
+
+      @keyframes riseIn {
+        from {
+          opacity: 0;
+          transform: translateY(14px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0px);
+        }
+      }
+
+      @keyframes pulseAlert {
+        0% {
+          box-shadow: 0 0 0 0 rgba(213, 59, 47, 0.45);
+        }
+        70% {
+          box-shadow: 0 0 0 12px rgba(213, 59, 47, 0);
+        }
+        100% {
+          box-shadow: 0 0 0 0 rgba(213, 59, 47, 0);
+        }
+      }
+
+      @keyframes gradientShift {
+        0% {
+          background-position: 0% 50%;
+        }
+        50% {
+          background-position: 100% 50%;
+        }
+        100% {
+          background-position: 0% 50%;
+        }
+      }
+
+      @keyframes shimmer {
+        0% {
+          transform: translateX(-120%);
+        }
+        55% {
+          transform: translateX(120%);
+        }
+        100% {
+          transform: translateX(120%);
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          animation: none !important;
+          transition: none !important;
+        }
+      }
+
+      @media (max-width: 640px) {
+        .layout {
+          width: 96vw;
+        }
+
+        .brand-logo {
+          width: 40px;
+          height: 40px;
+        }
+
+        #map {
+          height: 52vh;
+        }
+      }
+    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;600;700;800&family=Sora:wght@600;700;800&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <main class="layout">
+      <section class="panel headline">
+        <div class="brand-block">
+          <div class="brand-title-row">
+            <div class="brand-logo" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 21C15.7 16.7 18 13.8 18 10.5C18 7 15.3 4.5 12 4.5C8.7 4.5 6 7 6 10.5C6 13.8 8.3 16.7 12 21Z" stroke="white" stroke-width="1.7"/>
+                <circle cx="12" cy="10" r="2.3" fill="white"/>
+              </svg>
+            </div>
+            <div>
+              <h1>GPS Bag Tracker</h1>
+              <p class="hero-note">Embedded anti-theft live monitor with route history and instant alert visibility.</p>
+            </div>
+          </div>
+          <div class="logo-strip" aria-label="technology logos">
+            <span class="logo-chip">
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="7" stroke="white" stroke-width="1.8"/><path d="M12 2V6M12 18V22M2 12H6M18 12H22" stroke="white" stroke-width="1.8"/></svg>
+              NEO-M8N
+            </span>
+            <span class="logo-chip">
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="5" y="6" width="14" height="12" rx="2" stroke="white" stroke-width="1.8"/><path d="M6 8L12 13L18 8" stroke="white" stroke-width="1.8"/></svg>
+              SIM800L SMS
+            </span>
+            <span class="logo-chip">
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 17L8 12L12 15L17 9L21 12" stroke="white" stroke-width="1.8"/><path d="M3 20H21" stroke="white" stroke-width="1.8"/></svg>
+              Live Map
+            </span>
+          </div>
+        </div>
+        <div class="header-actions">
+          <div id="statusPill" class="status-pill unknown">UNKNOWN</div>
+          <div id="mapProvider" class="provider">Map: loading...</div>
+          <button id="themeToggleBtn" class="theme-toggle" type="button">Switch to Dark</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div id="map"></div>
+      </section>
+
+      <section class="panel stats">
+        <div class="stat-box">
+          <div class="stat-label">Current Latitude</div>
+          <div id="latVal" class="stat-value">-</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Current Longitude</div>
+          <div id="lonVal" class="stat-value">-</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Distance From Reference</div>
+          <div id="distVal" class="stat-value">-</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Path Points</div>
+          <div id="pointsVal" class="stat-value">0</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Last Update</div>
+          <div id="timeVal" class="stat-value">-</div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="logs-head">
+          <div>
+            <h3>Recent SMS Logs</h3>
+            <p class="hint">Message format example: LAT:6.927100,LON:79.861200,REFLAT:6.927000,REFLON:79.861000</p>
+          </div>
+          <label class="toggle-wrap">
+            <input id="parsedOnlyToggle" type="checkbox" />
+            Show only parsed
+          </label>
+        </div>
+        <div id="logSummary" class="mini log-summary">Waiting for incoming messages...</div>
+        <ol id="smsLogs" class="log-list"></ol>
+
+        <details class="tools-dropdown">
+          <summary>Manual SMS Tools (Optional)</summary>
+          <div class="tools-body">
+            <p class="hint">Use this only when you want to test manually without Twilio. Paste an incoming SMS and send.</p>
+            <textarea
+              id="smsInput"
+              class="sms-input"
+              placeholder='Example 1: LAT:6.927100,LON:79.861200,STATUS:SAFE,REFLAT:6.927000,REFLON:79.861000
+Example 2: ref loc - "80.593018","7.253505"\nYour bag is missing!'
+            ></textarea>
+            <button id="sendSmsBtn" class="btn" type="button">Send To Dashboard</button>
+            <div id="ingestMsg" class="mini"></div>
+          </div>
+        </details>
+      </section>
+    </main>
+
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+      crossorigin=""
+    ></script>
+    <script>
+      let mapMode = null;
+      let pollTimer = null;
+
+      let gMap;
+      let gBagMarker;
+      let gRefMarker;
+      let gSafeCircle;
+      let gPathLine;
+
+      let lMap;
+      let lTileLayer;
+      let lBagMarker;
+      let lRefMarker;
+      let lSafeCircle;
+      let lPathLine;
+
+      const statusPill = document.getElementById("statusPill");
+      const mapProvider = document.getElementById("mapProvider");
+      const latVal = document.getElementById("latVal");
+      const lonVal = document.getElementById("lonVal");
+      const distVal = document.getElementById("distVal");
+      const pointsVal = document.getElementById("pointsVal");
+      const timeVal = document.getElementById("timeVal");
+      const smsLogs = document.getElementById("smsLogs");
+      const smsInput = document.getElementById("smsInput");
+      const sendSmsBtn = document.getElementById("sendSmsBtn");
+      const ingestMsg = document.getElementById("ingestMsg");
+      const parsedOnlyToggle = document.getElementById("parsedOnlyToggle");
+      const logSummary = document.getElementById("logSummary");
+      const themeToggleBtn = document.getElementById("themeToggleBtn");
+
+      const THEME_STORAGE_KEY = "gps-theme";
+      let activeTheme = "light";
+
+      let latestPayload = null;
+
+      function getLeafletTileConfig() {
+        return {
+          url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+          attribution: "&copy; OpenStreetMap contributors",
+          maxZoom: 19,
+        };
+      }
+
+      function applyLeafletTheme() {
+        if (!lMap) return;
+
+        const tileConfig = getLeafletTileConfig();
+        if (lTileLayer) {
+          lMap.removeLayer(lTileLayer);
+        }
+
+        lTileLayer = L.tileLayer(tileConfig.url, {
+          maxZoom: tileConfig.maxZoom,
+          attribution: tileConfig.attribution,
+        }).addTo(lMap);
+      }
+
+      function updateThemeButton() {
+        const nextMode = activeTheme === "dark" ? "Light" : "Dark";
+        themeToggleBtn.textContent = `Switch to ${nextMode}`;
+        themeToggleBtn.setAttribute("aria-label", `Switch to ${nextMode} mode`);
+      }
+
+      function setTheme(theme) {
+        activeTheme = theme === "dark" ? "dark" : "light";
+        document.documentElement.setAttribute("data-theme", activeTheme);
+        localStorage.setItem(THEME_STORAGE_KEY, activeTheme);
+        updateThemeButton();
+        applyLeafletTheme();
+      }
+
+      function initTheme() {
+        const saved = localStorage.getItem(THEME_STORAGE_KEY);
+        if (saved === "dark" || saved === "light") {
+          setTheme(saved);
+          return;
+        }
+
+        const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+        setTheme(prefersDark ? "dark" : "light");
+      }
+
+      function formatTime(isoTime) {
+        if (!isoTime) return "-";
+        return new Date(isoTime).toLocaleString();
+      }
+
+      function updateStatusPill(status) {
+        const normalized = (status || "UNKNOWN").toUpperCase();
+        statusPill.textContent = normalized;
+        statusPill.classList.remove("safe", "alert", "unknown");
+
+        if (normalized === "SAFE") statusPill.classList.add("safe");
+        else if (normalized === "ALERT") statusPill.classList.add("alert");
+        else statusPill.classList.add("unknown");
+      }
+
+      function renderLogs(logs) {
+        smsLogs.innerHTML = "";
+
+        const allLogs = Array.isArray(logs) ? logs : [];
+        const parsedCount = allLogs.filter((item) => item.parsed).length;
+        const invalidCount = allLogs.length - parsedCount;
+
+        const sortedLogs = [...allLogs].sort((a, b) => {
+          if (Boolean(a.parsed) !== Boolean(b.parsed)) {
+            return a.parsed ? -1 : 1;
+          }
+          return new Date(b.receivedAt || 0).getTime() - new Date(a.receivedAt || 0).getTime();
+        });
+
+        const filteredLogs = parsedOnlyToggle.checked
+          ? sortedLogs.filter((item) => item.parsed)
+          : sortedLogs;
+
+        const visibleLogs = filteredLogs.slice(0, 12);
+        logSummary.textContent = `Showing ${visibleLogs.length} of ${allLogs.length} logs (${parsedCount} parsed, ${invalidCount} invalid)`;
+
+        if (!visibleLogs.length) {
+          const li = document.createElement("li");
+          li.className = "empty-log";
+          li.textContent = "No log entries for the selected filter.";
+          smsLogs.appendChild(li);
+          return;
+        }
+
+        visibleLogs.forEach((item) => {
+          const li = document.createElement("li");
+          li.className = item.parsed ? "valid-log" : "invalid-log";
+          const state = item.parsed ? "parsed" : "invalid";
+          const reason = item.reason ? ` (${item.reason})` : "";
+          const bodyText = String(item.body || "").replace(/\n/g, " | ");
+          li.textContent = `[${formatTime(item.receivedAt)}] ${item.source} - ${state}${reason} - ${bodyText}`;
+          smsLogs.appendChild(li);
+        });
+      }
+
+      function ensureGoogleMap(center) {
+        if (gMap) return;
+
+        gMap = new google.maps.Map(document.getElementById("map"), {
+          center,
+          zoom: 18,
+          mapTypeId: "hybrid",
+          streetViewControl: false,
+          fullscreenControl: true,
+        });
+
+        gBagMarker = new google.maps.Marker({
+          map: gMap,
+          position: center,
+          title: "Bag",
+          icon: {
+            path: google.maps.SymbolPath.CIRCLE,
+            fillColor: "#d2372d",
+            fillOpacity: 1,
+            strokeColor: "#ffffff",
+            strokeWeight: 2,
+            scale: 8,
+          },
+        });
+
+        gPathLine = new google.maps.Polyline({
+          map: gMap,
+          path: [center],
+          geodesic: true,
+          strokeColor: "#d2372d",
+          strokeOpacity: 0.95,
+          strokeWeight: 3,
+        });
+      }
+
+      function ensureLeafletMap(center) {
+        if (lMap) return;
+
+        lMap = L.map("map", { zoomControl: true }).setView([center.lat, center.lng], 18);
+        applyLeafletTheme();
+
+        lBagMarker = L.circleMarker([center.lat, center.lng], {
+          radius: 8,
+          color: "#ffffff",
+          weight: 2,
+          fillColor: "#d2372d",
+          fillOpacity: 1,
+        }).addTo(lMap);
+
+        lPathLine = L.polyline([[center.lat, center.lng]], {
+          color: "#d2372d",
+          weight: 3,
+          opacity: 0.95,
+        }).addTo(lMap);
+      }
+
+      function drawGoogleReference(referencePoint, safeRadiusMeters) {
+        if (!referencePoint) {
+          if (gRefMarker) gRefMarker.setMap(null);
+          if (gSafeCircle) gSafeCircle.setMap(null);
+          gRefMarker = null;
+          gSafeCircle = null;
+          return;
+        }
+
+        const refPos = { lat: referencePoint.lat, lng: referencePoint.lon };
+
+        if (!gRefMarker) {
+          gRefMarker = new google.maps.Marker({
+            map: gMap,
+            position: refPos,
+            title: "Reference Point",
+            icon: "https://maps.google.com/mapfiles/ms/icons/blue-dot.png",
+          });
+        } else {
+          gRefMarker.setPosition(refPos);
+        }
+
+        if (!gSafeCircle) {
+          gSafeCircle = new google.maps.Circle({
+            map: gMap,
+            center: refPos,
+            radius: safeRadiusMeters || 20,
+            fillColor: "#1f9d55",
+            fillOpacity: 0.14,
+            strokeColor: "#1f9d55",
+            strokeWeight: 2,
+          });
+        } else {
+          gSafeCircle.setCenter(refPos);
+          gSafeCircle.setRadius(safeRadiusMeters || 20);
+        }
+      }
+
+      function drawLeafletReference(referencePoint, safeRadiusMeters) {
+        if (!referencePoint) {
+          if (lRefMarker) lMap.removeLayer(lRefMarker);
+          if (lSafeCircle) lMap.removeLayer(lSafeCircle);
+          lRefMarker = null;
+          lSafeCircle = null;
+          return;
+        }
+
+        const refPos = [referencePoint.lat, referencePoint.lon];
+
+        if (!lRefMarker) {
+          lRefMarker = L.circleMarker(refPos, {
+            radius: 7,
+            color: "#ffffff",
+            weight: 2,
+            fillColor: "#005f73",
+            fillOpacity: 1,
+          }).addTo(lMap);
+        } else {
+          lRefMarker.setLatLng(refPos);
+        }
+
+        if (!lSafeCircle) {
+          lSafeCircle = L.circle(refPos, {
+            radius: safeRadiusMeters || 20,
+            color: "#1f9d55",
+            fillColor: "#1f9d55",
+            fillOpacity: 0.14,
+            weight: 2,
+          }).addTo(lMap);
+        } else {
+          lSafeCircle.setLatLng(refPos);
+          lSafeCircle.setRadius(safeRadiusMeters || 20);
+        }
+      }
+
+      function updateGoogleMap(latest, pathPoints) {
+        const bagPos = { lat: latest.lat, lng: latest.lon };
+        ensureGoogleMap(bagPos);
+
+        gBagMarker.setPosition(bagPos);
+        gMap.panTo(bagPos);
+
+        const normalizedStatus = (latest.status || "UNKNOWN").toUpperCase();
+        gBagMarker.setIcon({
+          path: google.maps.SymbolPath.CIRCLE,
+          fillColor: normalizedStatus === "ALERT" ? "#d2372d" : "#1f9d55",
+          fillOpacity: 1,
+          strokeColor: "#ffffff",
+          strokeWeight: 2,
+          scale: 8,
+        });
+
+        gPathLine.setPath(pathPoints.length ? pathPoints : [bagPos]);
+        drawGoogleReference(latest.referencePoint, latest.safeRadiusMeters);
+      }
+
+      function updateLeafletMap(latest, history) {
+        const bagPos = { lat: latest.lat, lng: latest.lon };
+        ensureLeafletMap(bagPos);
+
+        const normalizedStatus = (latest.status || "UNKNOWN").toUpperCase();
+        lBagMarker.setStyle({
+          fillColor: normalizedStatus === "ALERT" ? "#d2372d" : "#1f9d55",
+        });
+        lBagMarker.setLatLng([bagPos.lat, bagPos.lng]);
+        lMap.panTo([bagPos.lat, bagPos.lng], { animate: true, duration: 0.4 });
+
+        const latLngs = (history || []).map((p) => [p.lat, p.lon]);
+        lPathLine.setLatLngs(latLngs.length ? latLngs : [[bagPos.lat, bagPos.lng]]);
+        drawLeafletReference(latest.referencePoint, latest.safeRadiusMeters);
+      }
+
+      function updateMap(data) {
+        const latest = data.latestState;
+        latestPayload = data;
+        renderLogs(data.smsLogs || []);
+
+        if (!latest) {
+          updateStatusPill("UNKNOWN");
+          latVal.textContent = "-";
+          lonVal.textContent = "-";
+          distVal.textContent = "-";
+          pointsVal.textContent = String((data.history || []).length || 0);
+          timeVal.textContent = "-";
+          return;
+        }
+
+        const pathPoints = (data.history || []).map((p) => ({ lat: p.lat, lng: p.lon }));
+        const hasCoordinates = Number.isFinite(latest.lat) && Number.isFinite(latest.lon);
+
+        if (hasCoordinates && mapMode === "google") {
+          updateGoogleMap(latest, pathPoints);
+        } else if (hasCoordinates) {
+          updateLeafletMap(latest, data.history || []);
+        }
+
+        updateStatusPill(latest.status);
+        latVal.textContent = hasCoordinates ? latest.lat.toFixed(6) : "-";
+        lonVal.textContent = hasCoordinates ? latest.lon.toFixed(6) : "-";
+        distVal.textContent = latest.distanceFromReferenceMeters == null
+          ? "-"
+          : `${latest.distanceFromReferenceMeters.toFixed(2)} m`;
+        pointsVal.textContent = String(latest.totalPathPoints || pathPoints.length || 0);
+        timeVal.textContent = formatTime(latest.updatedAt);
+      }
+
+      async function pollData() {
+        try {
+          const response = await fetch("/api/status", { cache: "no-store" });
+          const data = await response.json();
+          updateMap(data);
+        } catch (error) {
+          console.error("Failed to fetch tracker status", error);
+        }
+      }
+
+      function startPolling() {
+        if (pollTimer) return;
+        pollData();
+        pollTimer = setInterval(pollData, 5000);
+      }
+
+      function loadGoogleScript(apiKey) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement("script");
+          script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}`;
+          script.async = true;
+          script.defer = true;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      async function loadMapAndStart() {
+        const configResponse = await fetch("/api/config", { cache: "no-store" });
+        const config = await configResponse.json();
+
+        if (config.googleMapsApiKey) {
+          try {
+            await loadGoogleScript(config.googleMapsApiKey);
+            mapMode = "google";
+            mapProvider.textContent = "Map: Google Maps";
+            startPolling();
+            return;
+          } catch (error) {
+            console.warn("Google Maps load failed, fallback to OpenStreetMap", error);
+          }
+        }
+
+        mapMode = "leaflet";
+        mapProvider.textContent = "Map: OpenStreetMap (no API key)";
+        startPolling();
+      }
+
+      async function sendManualSms() {
+        const payload = smsInput.value.trim();
+        if (!payload) {
+          ingestMsg.textContent = "Type or paste an SMS message first.";
+          return;
+        }
+
+        sendSmsBtn.disabled = true;
+        ingestMsg.textContent = "Sending...";
+
+        try {
+          const response = await fetch("/api/mock", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ message: payload }),
+          });
+
+          if (!response.ok) {
+            const err = await response.json();
+            ingestMsg.textContent = `Failed: ${err.error || "Invalid SMS format"}`;
+            return;
+          }
+
+          ingestMsg.textContent = "Message received. Dashboard updated.";
+          await pollData();
+        } catch (error) {
+          ingestMsg.textContent = "Failed to send message.";
+        } finally {
+          sendSmsBtn.disabled = false;
+        }
+      }
+
+      sendSmsBtn.addEventListener("click", sendManualSms);
+      parsedOnlyToggle.addEventListener("change", () => {
+        renderLogs(latestPayload?.smsLogs || []);
+      });
+      themeToggleBtn.addEventListener("click", () => {
+        setTheme(activeTheme === "dark" ? "light" : "dark");
+      });
+
+      initTheme();
+      loadMapAndStart();
+    </script>
+  </body>
+</html>
