@@ -482,6 +482,31 @@
         outline-offset: 2px;
       }
 
+      .reset-btn {
+        border: 1px solid rgba(255, 255, 255, 0.45);
+        border-radius: 999px;
+        background: rgba(175, 32, 24, 0.18);
+        color: #fff;
+        font: inherit;
+        font-size: 0.8rem;
+        font-weight: 700;
+        letter-spacing: 0.25px;
+        padding: 7px 12px;
+        cursor: pointer;
+        backdrop-filter: blur(4px);
+        transition: transform 180ms ease, background 180ms ease;
+      }
+
+      .reset-btn:hover {
+        transform: translateY(-1px);
+        background: rgba(175, 32, 24, 0.3);
+      }
+
+      .reset-btn:focus-visible {
+        outline: 2px solid rgba(255, 255, 255, 0.8);
+        outline-offset: 2px;
+      }
+
       .sms-input:focus {
         outline: none;
         border-color: rgba(10, 114, 132, 0.65);
@@ -687,6 +712,7 @@
           <div id="statusPill" class="status-pill unknown">UNKNOWN</div>
           <div id="mapProvider" class="provider">Map: loading...</div>
           <button id="themeToggleBtn" class="theme-toggle" type="button">Switch to Dark</button>
+          <button id="resetBtn" class="reset-btn" type="button">Reset Tracker</button>
         </div>
       </section>
 
@@ -721,7 +747,7 @@
         <div class="logs-head">
           <div>
             <h3>Recent SMS Logs</h3>
-            <p class="hint">Message format example: LAT:6.927100,LON:79.861200,REFLAT:6.927000,REFLON:79.861000</p>
+            <p class="hint">Message examples: LAT/LON structured, legacy ref loc, and legacy live loc updates.</p>
           </div>
           <label class="toggle-wrap">
             <input id="parsedOnlyToggle" type="checkbox" />
@@ -739,7 +765,8 @@
               id="smsInput"
               class="sms-input"
               placeholder='Example 1: LAT:6.927100,LON:79.861200,STATUS:SAFE,REFLAT:6.927000,REFLON:79.861000
-Example 2: ref loc - "80.593018","7.253505"\nYour bag is missing!'
+Example 2: ref loc - "80.593018","7.253505"
+Example 3: live loc - "80.592204","7.253557"\nYour bag is missing!'
             ></textarea>
             <button id="sendSmsBtn" class="btn" type="button">Send To Dashboard</button>
             <div id="ingestMsg" class="mini"></div>
@@ -784,6 +811,7 @@ Example 2: ref loc - "80.593018","7.253505"\nYour bag is missing!'
       const parsedOnlyToggle = document.getElementById("parsedOnlyToggle");
       const logSummary = document.getElementById("logSummary");
       const themeToggleBtn = document.getElementById("themeToggleBtn");
+      const resetBtn = document.getElementById("resetBtn");
 
       const THEME_STORAGE_KEY = "gps-theme";
       let activeTheme = "light";
@@ -893,59 +921,67 @@ Example 2: ref loc - "80.593018","7.253505"\nYour bag is missing!'
       }
 
       function ensureGoogleMap(center) {
-        if (gMap) return;
+        if (!gMap) {
+          gMap = new google.maps.Map(document.getElementById("map"), {
+            center,
+            zoom: 18,
+            mapTypeId: "hybrid",
+            streetViewControl: false,
+            fullscreenControl: true,
+          });
+        }
 
-        gMap = new google.maps.Map(document.getElementById("map"), {
-          center,
-          zoom: 18,
-          mapTypeId: "hybrid",
-          streetViewControl: false,
-          fullscreenControl: true,
-        });
+        if (!gBagMarker) {
+          gBagMarker = new google.maps.Marker({
+            map: gMap,
+            position: center,
+            title: "Bag",
+            icon: {
+              path: google.maps.SymbolPath.CIRCLE,
+              fillColor: "#d2372d",
+              fillOpacity: 1,
+              strokeColor: "#ffffff",
+              strokeWeight: 2,
+              scale: 8,
+            },
+          });
+        }
 
-        gBagMarker = new google.maps.Marker({
-          map: gMap,
-          position: center,
-          title: "Bag",
-          icon: {
-            path: google.maps.SymbolPath.CIRCLE,
-            fillColor: "#d2372d",
-            fillOpacity: 1,
-            strokeColor: "#ffffff",
-            strokeWeight: 2,
-            scale: 8,
-          },
-        });
-
-        gPathLine = new google.maps.Polyline({
-          map: gMap,
-          path: [center],
-          geodesic: true,
-          strokeColor: "#d2372d",
-          strokeOpacity: 0.95,
-          strokeWeight: 3,
-        });
+        if (!gPathLine) {
+          gPathLine = new google.maps.Polyline({
+            map: gMap,
+            path: [center],
+            geodesic: true,
+            strokeColor: "#d2372d",
+            strokeOpacity: 0.95,
+            strokeWeight: 3,
+          });
+        }
       }
 
       function ensureLeafletMap(center) {
-        if (lMap) return;
+        if (!lMap) {
+          lMap = L.map("map", { zoomControl: true }).setView([center.lat, center.lng], 18);
+          applyLeafletTheme();
+        }
 
-        lMap = L.map("map", { zoomControl: true }).setView([center.lat, center.lng], 18);
-        applyLeafletTheme();
+        if (!lBagMarker) {
+          lBagMarker = L.circleMarker([center.lat, center.lng], {
+            radius: 8,
+            color: "#ffffff",
+            weight: 2,
+            fillColor: "#d2372d",
+            fillOpacity: 1,
+          }).addTo(lMap);
+        }
 
-        lBagMarker = L.circleMarker([center.lat, center.lng], {
-          radius: 8,
-          color: "#ffffff",
-          weight: 2,
-          fillColor: "#d2372d",
-          fillOpacity: 1,
-        }).addTo(lMap);
-
-        lPathLine = L.polyline([[center.lat, center.lng]], {
-          color: "#d2372d",
-          weight: 3,
-          opacity: 0.95,
-        }).addTo(lMap);
+        if (!lPathLine) {
+          lPathLine = L.polyline([[center.lat, center.lng]], {
+            color: "#d2372d",
+            weight: 3,
+            opacity: 0.95,
+          }).addTo(lMap);
+        }
       }
 
       function drawGoogleReference(referencePoint, safeRadiusMeters) {
@@ -1060,12 +1096,55 @@ Example 2: ref loc - "80.593018","7.253505"\nYour bag is missing!'
         drawLeafletReference(latest.referencePoint, latest.safeRadiusMeters);
       }
 
+      function clearMapVisuals() {
+        if (gBagMarker) {
+          gBagMarker.setMap(null);
+          gBagMarker = null;
+        }
+
+        if (gRefMarker) {
+          gRefMarker.setMap(null);
+          gRefMarker = null;
+        }
+
+        if (gSafeCircle) {
+          gSafeCircle.setMap(null);
+          gSafeCircle = null;
+        }
+
+        if (gPathLine) {
+          gPathLine.setMap(null);
+          gPathLine = null;
+        }
+
+        if (lMap && lBagMarker) {
+          lMap.removeLayer(lBagMarker);
+          lBagMarker = null;
+        }
+
+        if (lMap && lRefMarker) {
+          lMap.removeLayer(lRefMarker);
+          lRefMarker = null;
+        }
+
+        if (lMap && lSafeCircle) {
+          lMap.removeLayer(lSafeCircle);
+          lSafeCircle = null;
+        }
+
+        if (lMap && lPathLine) {
+          lMap.removeLayer(lPathLine);
+          lPathLine = null;
+        }
+      }
+
       function updateMap(data) {
         const latest = data.latestState;
         latestPayload = data;
         renderLogs(data.smsLogs || []);
 
         if (!latest) {
+          clearMapVisuals();
           updateStatusPill("UNKNOWN");
           latVal.textContent = "-";
           lonVal.textContent = "-";
@@ -1175,7 +1254,36 @@ Example 2: ref loc - "80.593018","7.253505"\nYour bag is missing!'
         }
       }
 
+      async function resetTracker() {
+        const confirmed = window.confirm("Reset tracker data and clear current path?");
+        if (!confirmed) return;
+
+        resetBtn.disabled = true;
+        ingestMsg.textContent = "Resetting tracker...";
+
+        try {
+          const response = await fetch("/api/reset", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ keepLogs: false }),
+          });
+
+          if (!response.ok) {
+            ingestMsg.textContent = "Failed to reset tracker.";
+            return;
+          }
+
+          ingestMsg.textContent = "Tracker reset complete.";
+          await pollData();
+        } catch (error) {
+          ingestMsg.textContent = "Failed to reset tracker.";
+        } finally {
+          resetBtn.disabled = false;
+        }
+      }
+
       sendSmsBtn.addEventListener("click", sendManualSms);
+      resetBtn.addEventListener("click", resetTracker);
       parsedOnlyToggle.addEventListener("change", () => {
         renderLogs(latestPayload?.smsLogs || []);
       });

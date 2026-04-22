@@ -54,10 +54,14 @@ function parseLegacyAlertStatus(message) {
   return /bag\s+is\s+missing|missing/i.test(message) ? "ALERT" : null;
 }
 
-function parseLegacyRefLoc(message) {
+function parseLegacyLabeledLoc(message, label) {
   const match = message.match(
-    /ref\s*loc\s*-\s*"?(-?\d+(?:\.\d+)?)"?\s*[, ]+\s*"?(-?\d+(?:\.\d+)?)"?/i
+    new RegExp(
+      `${label}\\s*loc\\s*-\\s*"?(-?\\d+(?:\\.\\d+)?)"?\\s*[, ]+\\s*"?(-?\\d+(?:\\.\\d+)?)"?`,
+      "i"
+    )
   );
+
   if (!match) return null;
 
   const first = Number(match[1]);
@@ -67,7 +71,7 @@ function parseLegacyRefLoc(message) {
     return null;
   }
 
-  // Legacy REF LOC payload is usually "longitude,latitude".
+  // Legacy LOC payload is usually "longitude,latitude".
   if (Math.abs(first) <= 180 && Math.abs(second) <= 90) {
     return { lat: second, lon: first };
   }
@@ -77,6 +81,14 @@ function parseLegacyRefLoc(message) {
   }
 
   return { lat: second, lon: first };
+}
+
+function parseLegacyRefLoc(message) {
+  return parseLegacyLabeledLoc(message, "ref");
+}
+
+function parseLegacyLiveLoc(message) {
+  return parseLegacyLabeledLoc(message, "live");
 }
 
 function parseReferenceCompact(message) {
@@ -101,12 +113,13 @@ function parseSmsBody(message) {
   const status = parseStatus(body) || parseLegacyAlertStatus(body);
   const compactRef = parseReferenceCompact(body);
   const legacyRefLoc = parseLegacyRefLoc(body);
+  const legacyLiveLoc = parseLegacyLiveLoc(body);
 
-  const finalLat = Number.isFinite(lat) ? lat : legacyRefLoc?.lat ?? null;
-  const finalLon = Number.isFinite(lon) ? lon : legacyRefLoc?.lon ?? null;
+  const finalLat = Number.isFinite(lat) ? lat : legacyLiveLoc?.lat ?? legacyRefLoc?.lat ?? null;
+  const finalLon = Number.isFinite(lon) ? lon : legacyLiveLoc?.lon ?? legacyRefLoc?.lon ?? null;
 
-  const finalRefLat = refLat ?? compactRef?.refLat ?? null;
-  const finalRefLon = refLon ?? compactRef?.refLon ?? null;
+  const finalRefLat = refLat ?? compactRef?.refLat ?? legacyRefLoc?.lat ?? null;
+  const finalRefLon = refLon ?? compactRef?.refLon ?? legacyRefLoc?.lon ?? null;
 
   if (!Number.isFinite(finalLat) || !Number.isFinite(finalLon)) {
     return null;
@@ -146,7 +159,7 @@ function extractMockIncomingText(req) {
       (value) => typeof value === "string" && value.trim()
     );
 
-    const likelySms = allStringValues.find((value) => /ref\s*loc|lat\s*[:=]|lon\s*[:=]|missing/i.test(value));
+    const likelySms = allStringValues.find((value) => /ref\s*loc|live\s*loc|lat\s*[:=]|lon\s*[:=]|missing/i.test(value));
     if (likelySms) {
       return likelySms;
     }
@@ -225,9 +238,35 @@ function upsertSmsLog(entry) {
   }
 }
 
+function resetTrackerState(options = {}) {
+  const keepLogs = Boolean(options.keepLogs);
+
+  referencePoint = null;
+  latestState = null;
+  pathHistory.length = 0;
+
+  if (!keepLogs) {
+    smsLogs.length = 0;
+  }
+}
+
 function updateTrackerState(parsedData, source) {
-  if (Number.isFinite(parsedData.refLat) && Number.isFinite(parsedData.refLon)) {
-    referencePoint = { lat: parsedData.refLat, lon: parsedData.refLon };
+  const hasIncomingReference = Number.isFinite(parsedData.refLat) && Number.isFinite(parsedData.refLon);
+
+  if (hasIncomingReference) {
+    const nextReference = { lat: parsedData.refLat, lon: parsedData.refLon };
+    const isNewReference =
+      !referencePoint ||
+      referencePoint.lat !== nextReference.lat ||
+      referencePoint.lon !== nextReference.lon;
+
+    if (isNewReference) {
+      // A new reference point starts a new track segment.
+      pathHistory.length = 0;
+      latestState = null;
+    }
+
+    referencePoint = nextReference;
   }
 
   const point = {
@@ -255,13 +294,18 @@ function updateTrackerState(parsedData, source) {
   }
 
   const computedStatus = outOfRange == null ? "UNKNOWN" : outOfRange ? "ALERT" : "SAFE";
+  const forceAlert = parsedData.status === "ALERT";
 
   latestState = {
     source,
     lat: parsedData.lat,
     lon: parsedData.lon,
     reportedStatus: parsedData.status || null,
-    status: computedStatus === "UNKNOWN" ? parsedData.status || computedStatus : computedStatus,
+    status: forceAlert
+      ? "ALERT"
+      : computedStatus === "UNKNOWN"
+        ? parsedData.status || computedStatus
+        : computedStatus,
     outOfRange,
     safeRadiusMeters: SAFE_RADIUS_METERS,
     distanceFromReferenceMeters,
@@ -287,6 +331,17 @@ app.get("/api/config", (req, res) => {
 
 app.get("/api/status", (req, res) => {
   res.json({
+    latestState,
+    history: pathHistory,
+    smsLogs,
+  });
+});
+
+app.post("/api/reset", (req, res) => {
+  resetTrackerState({ keepLogs: Boolean(req.body?.keepLogs) });
+
+  return res.json({
+    ok: true,
     latestState,
     history: pathHistory,
     smsLogs,
@@ -344,7 +399,8 @@ app.post("/api/mock", (req, res) => {
 
     return res.status(400).json({
       ok: false,
-      error: "Invalid message format. Send LAT/LON data or an ALERT text such as 'Your bag is missing!'.",
+      error:
+        "Invalid message format. Send LAT/LON data, legacy ref/live loc payload, or an ALERT text such as 'Your bag is missing!'.",
     });
   }
 

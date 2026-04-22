@@ -50,6 +50,16 @@ Your bag is missing!
 
 If the message contains `bag is missing`, the status is set to ALERT.
 
+### 3) Legacy Live Location Update
+
+```text
+live loc - "80.592204","7.253557"
+```
+
+Use this after sending a reference location. The dashboard will keep the reference point and continue drawing the live path from incoming `live loc` coordinates.
+
+When a new reference location arrives, previous path history is reset automatically and a new track starts from that reference.
+
 ## How To Connect With Your Existing Embedded System
 
 ### Option A (Fastest, No Twilio)
@@ -75,6 +85,7 @@ If the message contains `bag is missing`, the status is set to ALERT.
 - `GET /api/status`
 - `POST /api/mock` (JSON: `{ "message": "..." }`)
 - `POST /sms` (Twilio form webhook)
+- `POST /api/reset` (JSON optional: `{ "keepLogs": false }`)
 
 ## .env
 
